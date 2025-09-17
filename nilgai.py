@@ -1,16 +1,17 @@
 import cv2
 import time
+import winsound   # works on Windows
 from ultralytics import YOLO
 
 # Load trained model
-model = YOLO("best.pt")  # replace with your model path
+model = YOLO("best.pt")  # replace with your trained weights
 
 # Start webcam
 cap = cv2.VideoCapture(0)
+cap.set(3, 640)  # optional: set resolution
+cap.set(4, 480)
 
-last_alert = 0
-alert_interval = 5  # seconds
-confidence_threshold = 0.5
+confidence_threshold = 0.80  # only alert above 80%
 
 while True:
     ret, frame = cap.read()
@@ -18,30 +19,34 @@ while True:
         break
 
     # YOLOv8 inference
-    results = model(frame)[0]  # first (and only) result
+    results = model.predict(frame, verbose=False)[0]
 
     # Draw boxes and check for Nilgai
+    detected = False
     for box in results.boxes:
-        conf = box.conf.item()
-        cls = int(box.cls.item())
+        conf = float(box.conf)
+        cls = int(box.cls)
 
-        if conf >= confidence_threshold and cls == 0:  # Nilgai class
-            x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
+        if conf >= confidence_threshold and cls == 0:  # Nilgai class (id=0)
+            x1, y1, x2, y2 = box.xyxy[0].int().tolist()
+            label = model.names[cls]
+
             cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-            cv2.putText(frame, f"Nilgai {conf:.2f}", (x1, y1-10),
+            cv2.putText(frame, f"{label} {conf:.2f}", (x1, y1-10),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
 
-            # Alert with delay
-            if time.time() - last_alert > alert_interval:
-                print("Nilgai detected!")
-                last_alert = time.time()
+            detected = True
+
+    # If Nilgai detected → beep
+    if detected:
+        print("Nilgai detected!")
+        winsound.Beep(1000, 1000)  # frequency=1000Hz, duration=500ms
 
     # Display video
     cv2.imshow("Nilgai Detection", frame)
 
-    if cv2.waitKey(1) & 0xFF == ord('q'):
+    if cv2.waitKey(1) == ord('q'):
         break
 
 cap.release()
 cv2.destroyAllWindows()
-
